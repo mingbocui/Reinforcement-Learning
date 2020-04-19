@@ -1,1 +1,11 @@
-*.ipynb_checkpoints
+./Algorithms/*/logs
+./Algorithms/*/utils/
+*.*~
+*.swp
+*.pyc
+__pycache__
+.vscode
+env
+.ipynb_checkpoints
+*.PNG
+*.ipynb

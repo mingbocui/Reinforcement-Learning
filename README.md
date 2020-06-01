@@ -1,3 +1,3 @@
-# Reinforcement-Learning
+# Deep Reinforcement Learning
 
-course slides and my implementations ofsome policy gradient algorithm
+Course slides and my implementations of some policy gradient algorithms

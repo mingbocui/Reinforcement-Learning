@@ -9,11 +9,31 @@ from model import ActorCritic
 from buffer import Buffer
 from loss import update
 
+
+
+# buffer will be reset for every epoch
+# 因为advantage只能灯rewards和value计算完再计算
+# 每个episode有长有短，我们储存一个episode里面每个step的reward和value，等到episode结束后才能逆序计算advantages
+
+# 定义每个trajectory的最长的长度 traj_max_len
+# 当前trajectory的steps超过traj_max_len时候会判断是timeout
+# 每个trajectory达到terminal的状态有两种情况， 一种是达到了目标状态， 即 done = True; 另一种是timeout
+# 如果达到了目标状态，那么在算 additional value的时候应该设为0
+# 如果是因为达到epoch内最大的steps（比如每个epoch只能有1000个step）或者因为当前的trajectory达到最大的steps数导致的终止， 我们需要
+# bootstrap value
 def run_ppo(env, hidden_size, buffer_size, policy_lr, val_lr, epochs, steps_per_epoch, traj_max_len, gamma, lam,
            clip_ratio, train_policy_iters, train_value_iters, target_kl, writer):
     
+#     env = env()
+    
+#     obs_dim = env.observation_space.shape
+#     act_dim = env.action_space.shape
     obs_dim = env.observation_space.shape[0]
     act_dim = env.action_space.n
+    
+    print("here", obs_dim, act_dim)
+    
+    
     actor_critic = ActorCritic(obs_dim, act_dim, hidden_size, activation_func=nn.Tanh())
     
     actor_optimizer = Adam(actor_critic.actor.parameters(), lr=policy_lr)
@@ -30,22 +50,35 @@ def run_ppo(env, hidden_size, buffer_size, policy_lr, val_lr, epochs, steps_per_
         # ppo is online learning so every epoch we need to recreat a buffer
         buffer.reset()
         for step in range(steps_per_epoch):
-
+            # 根据当前的observation通过policy net来生成logits，logits作为probability distribution 用来sample选择action
+            # 注意这里的obs是一维度的
             act, logp, val = actor_critic.step(torch.as_tensor(obs, dtype=torch.float32))
+#             action.numpy(), log_p_a.numpy(), value.numpy()
+#             print("act", act.shape)
             next_obs, reward, done, _ = env.step(act)
             epoch_ret += reward
             traj_len += 1
             buffer.store(obs, act, reward, val, logp)
-
+            
+            # 需要下一步的observation去get bootstap if the trajectory ended "unnormally"
             obs = next_obs
             
             timeout = traj_len == traj_max_len
             terminal = done or timeout
             epoch_end = step == steps_per_epoch-1
             
+            # spinnup的代码似乎考虑了多线程运行
+            # 因此它们的 buffer size是steps_per_epoch / num_procs
+            # 即每个procs有一个buffer
+            
+            # 只需要在terminal或者epoch_end的情况下需要运行
             if terminal or epoch_end:
+                #当trajectory“非正常”终止的时候才需要bootstrap
                 if epoch_end or timeout:
                     _, val, _ = actor_critic.step(torch.as_tensor(o, dtype=torch.float32))
+                    
+                #如果正常终止，因为达到了目标地点从而 done = True
+                #这种情况下不应该得到任何的additional value
                 else:
                     val = 0
                 
@@ -86,6 +119,9 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     random.seed(args.seed)
+    
+#     env = gym.make(args.env)
+    
     run_ppo(env=gym.make(args.env), 
             hidden_size=args.hidden_size, 
             buffer_size=args.steps_per_epoch,

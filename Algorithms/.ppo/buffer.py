@@ -12,6 +12,7 @@ class Buffer:
     
     def __init__(self, obs_dim, act_dim, buffer_size, gamma=0.99, lam=0.95):
         self.observation_buf = np.zeros((buffer_size, obs_dim), dtype=np.float32)
+        # 这里注意action_buf里存的是操作，所以是一维度
         self.action_buf = np.zeros((buffer_size,), dtype=np.float32)
         self.reward_buf = np.zeros((buffer_size,), dtype=np.float32)
         self.return_buf = np.zeros((buffer_size,), dtype=np.float32) #
@@ -28,7 +29,8 @@ class Buffer:
     def store(self, obs, act, reward, val, log_p_a):
         
         assert self.curr_ind < self.buffer_size
-
+        
+#         print(act)
         self.observation_buf[self.curr_ind] = obs
         self.action_buf[self.curr_ind] = act
         self.reward_buf[self.curr_ind] = reward
@@ -39,7 +41,12 @@ class Buffer:
         
     def finish_with(self, val):
         
+        # on-policy 
+        # 每当一个episode完成我们需要利用记录的所有数据计算advantage
+        # traj_start_ind 和 curr_ind记录的分别是当前这个episode开始和结束的在buffer中的index
         traj_slice = slice(self.traj_start_ind, self.curr_ind)
+        
+        # last val是为了计算discounted reward用的
         rewards = np.append(self.reward_buf[traj_slice], val)
         values = np.append(self.value_buf[traj_slice], val)
         
@@ -65,7 +72,9 @@ class Buffer:
     
     def get_buf_data(self):
         
-        # TODO
+        # 只能等buffer满了才能获取数据
+#         assert self.curr_ind == self.buffer_size
+        # TODO 这里需要计算advantages的mean和std
         # self.adv_buf = (self.adv_buf - adv_mean) / adv_std
         data = dict(obs=self.observation_buf,
                     act=self.action_buf,
